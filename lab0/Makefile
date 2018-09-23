@@ -9,4 +9,4 @@ main.o: main.cpp multimap.h
 	g++ -std=c++11 -c main.cpp
 
 clean:
-	rm *.o
+	rm *.o program
