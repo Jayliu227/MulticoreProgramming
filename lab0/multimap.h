@@ -26,4 +26,6 @@ private:
 	std::vector<node> data;
 };
 
+#include "multimap.cpp"
+
 #endif
