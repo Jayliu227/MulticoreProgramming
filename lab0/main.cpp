@@ -41,7 +41,9 @@ struct errorHandler{
 	}
 };
 
-void test(multimap<int, int>& mp, int numOfPairs, errorHandler& handler) {
+void test(int numOfPairs, errorHandler& handler) {
+	multimap<int, int> mp;
+
 	std::default_random_engine gen;
 	gen.seed(std::chrono::system_clock::now().time_since_epoch().count());
 	std::uniform_int_distribution<int> distr(0, 200);
@@ -97,13 +99,11 @@ int main(){
 	const unsigned int testCases = 10;
 	const unsigned int numOfPairs = 100;
 
-	multimap<int, int> mp;
-
 	for(int i = 0; i < testCases; i++){
 		std::cout << "Started test case " << (i + 1) << std::endl;
 		errorHandler handler;
 		handler.round = i + 1;
-		test(mp, numOfPairs, handler);
+		test(numOfPairs, handler);
 		handler.handleError();
 	}
 
