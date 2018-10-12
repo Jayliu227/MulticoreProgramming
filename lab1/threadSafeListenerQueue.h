@@ -8,6 +8,9 @@ class ThreadSafeListenerQueue {
 
 public:
 	ThreadSafeListenerQueue() {
+		head = end = 0;
+		isEmpty = true;
+
 		pthread_mutex_init(&lock, nullptr);
 		pthread_cond_init(&cond, nullptr);
 	}
@@ -41,7 +44,11 @@ private:
 
 	vector<T> data;
 
-	bool isEmpty = true;
+	int head;
+
+	int end;
+
+	bool isEmpty;
 	
 	pthread_mutex_t lock;
 
