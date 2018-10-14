@@ -1,14 +1,14 @@
 #ifndef THREAD_SAFE_LISTENER_QUEUE_H
 #define THREAD_SAFE_LISTENER_QUEUE_H
 
-using namespace std;
-
 template<typename T>
 class ThreadSafeListenerQueue {
 
 public:
 	ThreadSafeListenerQueue() {
-		head = end = 0;
+		// initially set both head and tail to be -1
+		head = tail = -1;
+		// and the queue is empty
 		isEmpty = true;
 
 		pthread_mutex_init(&lock, nullptr);
@@ -24,7 +24,7 @@ public:
 		Should push the element onto the front of the list, 
 		so that it will be the last of the items currently on the queue to be removed.
 	*/
-	bool Push(const T element);
+	bool push(const T element);
 
 	/*
 		Pop the least-recently inserted element from the queue and 
@@ -32,29 +32,33 @@ public:
 		if the queue was not empty. Return true if this was successful; 
 		return false if the queue was empty. 
 	*/
-	bool Pop(T& element);
+	bool pop(T& element);
 
 	/*
 		Similar to pop(), but block until there is an element to be popped. 
 		Return true if an element was returned.
 	*/
-	bool Listen(T& element);
+	bool listen(T& element);
 
 private:
 
-	vector<T> data;
+	// underlying store DS which is a std::vector
+	std::vector<T> data;
 
-	int head;
+	// indicates where the next pop should be
+	int32_t head;
 
-	int end;
+	// indicates the position of the most recent push
+	int32_t tail;
 
+	// used with cond variable to signify listeners
 	bool isEmpty;
-	
+
 	pthread_mutex_t lock;
 
 	pthread_cond_t cond;
 };
 
-#include "ThreadSafeListenerQueue.cpp"
+#include "threadSafeListenerQueue.cpp"
 
 #endif
