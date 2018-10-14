@@ -3,15 +3,15 @@
 #include <vector>
 #include <string>
 #include <random>
+#include <unistd.h>
 #include <pthread.h>
 #include <time.h>
 
 #include "threadSafeKVStore.h"
 #include "threadSafeListenerQueue.h"
 
-const int32_t THREAD_NUM = 10;
 const int32_t ITERATION_PER_THREAD = 10000;
-pthread_t threads[THREAD_NUM];
+int32_t THREAD_NUM;
 
 clock_t programStartTime;
 clock_t pthreadCompleteTime;
@@ -27,9 +27,43 @@ struct pthreadArgs{
 // thread function, which takes in a pthreadArgs as the input which contains necessary info
 void* threadFunction(void* arg);
 
-int main(){
+int main(int argc, char* argv[]){
+
+	int inputNumOfThreads = -1;
+	int token;
+	while((token = getopt(argc, argv, "n:")) != -1) {
+		switch(token) {
+			case 'n':
+				inputNumOfThreads = atoi(optarg);
+				break;
+			case '?':
+				if (optopt == 'n') {
+					std::cout << "flag -n requires an integer to specify number of threads." << std::endl;
+				} else if (isprint(optopt)) {
+					std::cout << "unknown command" << std::endl;
+				} else {
+					std::cout << "unknown character." << std::endl;
+				}
+				return 0;
+			default:
+				abort();
+		}
+	}
+
+	// check if the specified number of threads is valid
+	if (inputNumOfThreads < 1) {
+		std::cout << "The number of threads specified needs to be greater or equal to 1." << std::endl;
+		return 0;
+	}
+
+	THREAD_NUM = inputNumOfThreads;
+
+	// instantiation
 	auto threadSafeMapStore = new ThreadSafeKVStore<std::string, int32_t>();
 	auto threadSafeListenerQueue = new ThreadSafeListenerQueue<int32_t>();
+
+	// threads that would be spawned by main program
+	pthread_t threads[THREAD_NUM];
 
 	// arguments that would be passed to each thread
 	pthreadArgs args[THREAD_NUM];
