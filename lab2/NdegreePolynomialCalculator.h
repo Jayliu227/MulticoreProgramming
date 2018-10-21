@@ -1,43 +1,46 @@
 #ifndef NDEGREE_POLYNOMIAL_CALCULATOR_H
 #define NDEGREE_POLYNOMIAL_CALCULATOR_H
 
+#include <random>
 #include "threadSafeListenerQueue.h"
 
 class NdegreePolynomialCalculator{
 
 public:
 	NdegreePolynomialCalculator(int32_t degree,int32_t numOfThreads, float accuracy) {
-		this->degree = (degree >= 1 ? degree: 1);
+		this->degree = (degree >= 1 ? degree : 1);
 		this->numOfThreads = (numOfThreads >= 1 ? numOfThreads : 1);
-		this->accuracy = (accuracy > 0 && accuracy <= 1 ? accuracy : 0.01);
+		this->accuracy = accuracy;
 		this->hasFound = false;
 
 		this->jobQueue = new ThreadSafeListenerQueue<task_t>();
 		this->resultQueue = new ThreadSafeListenerQueue<task_t>();
+
+		this->generator.seed(std::chrono::system_clock::now().time_since_epoch().count());		
 	}
 
 	~NdegreePolynomialCalculator() {
+		std::cout << "Cleaned up.." << std::endl;
 		delete(jobQueue);
 		delete(resultQueue);
 	}
 
-	bool calculate(std::vector<int32_t>& coeff);
+	bool calculate(std::vector<float>& coeff);
 
 private:
-	struct task_t
-	{
-		std::vector<int32_t> coeff;
+	struct task_t {
+		std::vector<float> coeff;
 		float fitness;
 	};
-
+	
 	// thread working method
-	void* threadWork(void* arg);
+	static void* threadWork(void *);
 
 	// generate n random points and store them into points
-	bool genRandomPoints(int32_t num, std::vector< std::pair<int32_t, int32_t> >& points) const;
+	bool genRandomPoints();
 
 	// given the coeff and a set of points, compute the square sum of difference
-	float fitnessFunc(const std::vector<float> coeff, const std::vector< std::pair<int32_t, int32_t> > points) const;
+	float fitnessFunc(const std::vector<float>& coeff) const;
 
 	// degree of the polynomial
 	int32_t degree;
@@ -51,11 +54,17 @@ private:
 	// use to help threads stop working when a good result is found
 	bool hasFound;
 
+	clock_t startTime;
+	
+	clock_t completeTime;
+
 	ThreadSafeListenerQueue<task_t>* jobQueue;
 
 	ThreadSafeListenerQueue<task_t>* resultQueue;
 
-	std::vector< std::pair<int32_t, int32_t> > points;
+	std::vector< std::pair<float, float> > points;
+
+	std::default_random_engine generator;
 };
 
 #endif
