@@ -27,6 +27,8 @@ public:
 
 	bool calculate(std::vector<float>& coeff);
 
+	bool calculate(std::vector<float>& coeff, std::vector< std::pair<float, float> >& points);
+
 private:
 	struct task_t {
 		std::vector<float> coeff;

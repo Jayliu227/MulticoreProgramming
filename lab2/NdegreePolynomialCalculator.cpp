@@ -12,9 +12,12 @@ bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff){
 
 	// we need to generate n + 1 random points
 	genRandomPoints();
+	if (this->points.size() == 0) {
+		return false;
+	}
 
 	// we also need to give some initial values to coefficients
-	std::uniform_real_distribution<float> coeffDis(-50.0f, 50.0f);
+	std::uniform_real_distribution<float> coeffDis(-20.0f, 20.0f);
 	std::vector<float> coefficients;
 	for (int i = 1; i <= degree + 1; i++) {
 		float new_co = coeffDis(generator);
@@ -74,6 +77,8 @@ bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff){
 		pthread_join(threads[i], NULL);
 	}
 
+	resultCoeff = bestResult.coeff;
+
 	completeTime = clock();
 
 	// print out results to the console
@@ -93,9 +98,15 @@ bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff){
 	}
 	std::cout << std::endl;
 
-	std::cout << "Time Taken: " << ((completeTime - startTime) / double(CLOCKS_PER_SEC)) << "s." << std::endl;
+	std::cout << "With " << numOfThreads << " Threads, Time Taken: " << ((completeTime - startTime) / double(CLOCKS_PER_SEC)) << "s." << std::endl;
 
 	return true;
+}
+
+bool NdegreePolynomialCalculator::calculate(std::vector<float>& coeff, std::vector< std::pair<float, float> >& points) {
+	bool ok = calculate(coeff);
+	points = this->points;
+	return ok;
 }
 
 void* NdegreePolynomialCalculator::threadWork(void* arg) {
@@ -108,7 +119,7 @@ void* NdegreePolynomialCalculator::threadWork(void* arg) {
 	clock_t start, end;
 
 	// the variance used for mutating
-	std::uniform_real_distribution<float> mutateDis(-5.0f, 5.0f);
+	std::uniform_real_distribution<float> mutateDis(-2.0f, 2.0f);
 
 	// if the optimal solution is not yet found
 	while(!self->hasFound) {
@@ -139,7 +150,7 @@ void* NdegreePolynomialCalculator::threadWork(void* arg) {
 			}
 
 			end = clock();
-			if (((end - start) / double(CLOCKS_PER_SEC)) > 2.0f) {
+			if (((end - start) / double(CLOCKS_PER_SEC)) > 3.0f) {
 				break;
 			}
 		}
@@ -169,7 +180,7 @@ bool NdegreePolynomialCalculator::genRandomPoints() {
 float NdegreePolynomialCalculator::fitnessFunc(const std::vector<float>& coeff) const {
 	float fitness = 0;
 
-	for (auto point : points) {
+	for (auto& point : points) {
 		float x = point.first;
 		float y = point.second;
 
@@ -186,5 +197,5 @@ float NdegreePolynomialCalculator::fitnessFunc(const std::vector<float>& coeff) 
 		fitness += (ratio < 0 ? -ratio : ratio);
 	}
 
-	return fitness;
+	return fitness / (this->points.size());
 }
