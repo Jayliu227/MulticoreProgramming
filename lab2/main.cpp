@@ -7,6 +7,7 @@
 
 NdegreePolynomialCalculator* cal;
 
+// since sometimes, the result won't converge, we handle user interrupt here
 void signal_handler(int signalNum) { 
    std::cout << "Interrupted..." << std::endl;
 
@@ -16,6 +17,7 @@ void signal_handler(int signalNum) {
    exit(signalNum);   
 }
 
+// use coeff to calculate y by a given x
 float calculatePolynomial(const float x, const std::vector<float>& coeff) {
 	float result = 0;
 	float X = 1;
@@ -33,9 +35,10 @@ int main(int argc, char* argv[]) {
 	int inputNumOfThreads = 4;
 	int inputDegree = 1;
 	float inputAccuracy = 1.0f;
+	bool useAnnealing = false;
 
 	int token;
-	while((token = getopt(argc, argv, "n:d:f:")) != -1) {
+	while((token = getopt(argc, argv, "n:d:f:a:")) != -1) {
 		switch(token) {
 			case 'n':
 				inputNumOfThreads = atoi(optarg);
@@ -46,6 +49,9 @@ int main(int argc, char* argv[]) {
 			case 'f':
 				inputAccuracy = atof(optarg);
 				break;
+			case 'a':
+				useAnnealing = atoi(optarg) == 1;
+				break;
 			case '?':
 				if (optopt == 'n') {
 					std::cout << "flag -n requires an integer to specify number of threads (greater than 0)." << std::endl;
@@ -53,7 +59,9 @@ int main(int argc, char* argv[]) {
 					std::cout << "flag -d requires an integer to specify degree of the polynomial (greater or equal to 0)." << std::endl;
 				} else if (optopt == 'f') {
 					std::cout << "flag -f requires a float to specify the fitness accuracy (greater than 0)." << std::endl;
-				} else if (isprint(optopt)) {
+				} else if (optopt == 'a') {
+					std::cout << "flag -a requires a integer to specify whether you want to use annealing version." << std::endl;
+				}else if (isprint(optopt)) {
 					std::cout << "unknown command" << std::endl;
 				} else {
 					std::cout << "unknown character." << std::endl;
@@ -70,7 +78,7 @@ int main(int argc, char* argv[]) {
 	std::vector<float> coeff;
 	std::vector< std::pair<float, float> > sameplePoints;
 
-	if (cal->calculate(coeff, sameplePoints)) {
+	if (cal->calculate(coeff, sameplePoints, useAnnealing)) {
 		std::cout << "Real y Values Calculated Directly: " << std::endl;
 
 		for (auto& point : sameplePoints) {

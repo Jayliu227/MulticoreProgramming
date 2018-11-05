@@ -8,6 +8,7 @@ class NdegreePolynomialCalculator{
 
 public:
 	NdegreePolynomialCalculator(int32_t degree,int32_t numOfThreads, float accuracy) {
+		// set up private vars
 		this->degree = (degree >= 1 ? degree : 1);
 		this->numOfThreads = (numOfThreads >= 1 ? numOfThreads : 1);
 		this->accuracy = accuracy;
@@ -16,6 +17,7 @@ public:
 		this->jobQueue = new ThreadSafeListenerQueue<task_t>();
 		this->resultQueue = new ThreadSafeListenerQueue<task_t>();
 
+		// seed the generator
 		this->generator.seed(std::chrono::system_clock::now().time_since_epoch().count());		
 	}
 
@@ -25,18 +27,28 @@ public:
 		delete(resultQueue);
 	}
 
-	bool calculate(std::vector<float>& coeff);
+	bool calculate(std::vector<float>& coeff, bool useAnnealing);
 
-	bool calculate(std::vector<float>& coeff, std::vector< std::pair<float, float> >& points);
+	bool calculate(std::vector<float>& coeff, std::vector< std::pair<float, float> >& points, bool useAnnealing);
 
 private:
+	// structure that will be passed to job queue
 	struct task_t {
 		std::vector<float> coeff;
 		float fitness;
 	};
 	
+	// structure that can be used for threads to access the queue
+	struct arg_t {
+		NdegreePolynomialCalculator* self;
+		size_t threadNum;
+	};
+
 	// thread working method
 	static void* threadWork(void *);
+
+	// thread working annealing
+	static void* threadWorkAnnealing(void *);
 
 	// generate n random points and store them into points
 	bool genRandomPoints();
@@ -56,14 +68,19 @@ private:
 	// use to help threads stop working when a good result is found
 	bool hasFound;
 
+	// start of the computation
 	clock_t startTime;
 	
+	// end of the computation
 	clock_t completeTime;
 
+	// used to send coefficients and fitness to threads
 	ThreadSafeListenerQueue<task_t>* jobQueue;
 
+	// used to send coefficients and fitness back from threads 
 	ThreadSafeListenerQueue<task_t>* resultQueue;
 
+	// random points sample
 	std::vector< std::pair<float, float> > points;
 
 	std::default_random_engine generator;

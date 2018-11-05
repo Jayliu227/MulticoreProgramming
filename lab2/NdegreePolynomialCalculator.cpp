@@ -5,9 +5,12 @@
 #include <pthread.h>
 #include <time.h>
 
+#define _USE_MATH_DEFINES
+#include <cmath>
+
 #include "NdegreePolynomialCalculator.h"
 
-bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff){
+bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff, bool useAnnealing){
 	startTime = clock();
 
 	// we need to generate n + 1 random points
@@ -18,12 +21,12 @@ bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff){
 
 	// we also need to give some initial values to coefficients
 	std::uniform_real_distribution<float> coeffDis(-20.0f, 20.0f);
+	// initial coefficients, randomly generated
 	std::vector<float> coefficients;
 	for (int i = 1; i <= degree + 1; i++) {
 		float new_co = coeffDis(generator);
 		coefficients.push_back(new_co);
 	}
-	
 	float initialFitness = fitnessFunc(coefficients);
 
 	// we need to construct some threads and assign them with some tasks to do
@@ -37,9 +40,17 @@ bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff){
 		this->jobQueue->push(newTask);
 	}
 
+	arg_t arguments[numOfThreads];
+
 	// we spawn numOfThreads that many threads and let them do works
 	for (int i = 0; i < numOfThreads; i++) {		
-		if (pthread_create(&(threads[i]), nullptr, &NdegreePolynomialCalculator::threadWork, (void*)this)) {
+		arguments[i].self = this;
+		arguments[i].threadNum = (i + 1);
+		// we check if we are using annealing version
+		if (pthread_create(&(threads[i]), nullptr, 
+			useAnnealing ? &NdegreePolynomialCalculator::threadWorkAnnealing : &NdegreePolynomialCalculator::threadWork, 
+			(void*)(&arguments[i]))) 
+		{
 			std::cout << "Can not create thread." << std::endl;
 		}
 	}
@@ -49,9 +60,11 @@ bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff){
 	bestResult.coeff = coefficients;
 	bestResult.fitness = initialFitness;
 
+	// keep looping until we found a result that satisfy our requirement 'accuracy'
 	while (true) {
 		task_t result;
 		this->resultQueue->listen(result);
+
 		// if the new result is better, we record it and push it to the job queue
 		if (result.fitness < bestResult.fitness) {
 			bestResult.fitness = result.fitness;
@@ -60,8 +73,10 @@ bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff){
 				hasFound = true;
 				break;
 			}
+
 			std::cout << "New fitness: " << bestResult.fitness << "!" << std::endl;
 		}	
+
 		// else we simply push the old job to the queue
 		this->jobQueue->push(bestResult);
 	}
@@ -103,23 +118,98 @@ bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff){
 	return true;
 }
 
-bool NdegreePolynomialCalculator::calculate(std::vector<float>& coeff, std::vector< std::pair<float, float> >& points) {
-	bool ok = calculate(coeff);
+bool NdegreePolynomialCalculator::calculate(std::vector<float>& coeff, std::vector< std::pair<float, float> >& points, bool useAnnealing) {
+	bool ok = calculate(coeff, useAnnealing);
 	points = this->points;
 	return ok;
 }
 
+// simulated annealing version
+void* NdegreePolynomialCalculator::threadWorkAnnealing(void* arg) {
+	arg_t* argument = (arg_t*) arg;
+
+	NdegreePolynomialCalculator* self = argument->self;
+
+	std::default_random_engine generator;
+
+	generator.seed(argument->threadNum * std::chrono::system_clock::now().time_since_epoch().count());
+
+	// the variance used for mutating
+	std::uniform_real_distribution<float> mutateDis(-1.5f * argument->threadNum, 1.5f * argument->threadNum);
+
+	// the max temperature and it decreases monotonically over time
+	const int maxTemperature = 200;
+
+	// if the optimal solution is not yet found
+	while(!self->hasFound) {
+		task_t myTask;
+		// block until it receives a new task
+		self->jobQueue->listen(myTask);
+
+		// when fitness if passed as -1, it means we want to end our job
+		if (myTask.fitness == -1) break;
+
+		// our new fitness, initialized to be the same as the old fitness
+		float newFitness = myTask.fitness;
+		// our new coeff, intialized to be the same as the old coeff
+		std::vector<float> newCoefficient = myTask.coeff;
+		
+		// we start from high temperature and keep decrementing
+		for (int currentTemp = maxTemperature; currentTemp > 0 && !self->hasFound; currentTemp--) {
+			// every round, we first take the old coefficients (not necessary the optimal)
+			auto tempCo = newCoefficient;
+			
+			// we mutate each term
+			for (int i = 0; i < tempCo.size(); i++) {
+				// the reason why we multiply a factor is because higher degree tends to be more
+				// stable, hence should not be altered too much (by observation)
+				tempCo[i] += mutateDis(generator) * (i + 1) / (tempCo.size());
+			}
+
+			float tempFit = self->fitnessFunc(tempCo);
+
+			// positive is good, negative is bad
+			float deltaFit = newFitness - tempFit;
+
+			// if the result is better, we record it
+			if (deltaFit > 0) {
+				newCoefficient = tempCo;
+				newFitness = tempFit;
+			// with certain probability, we will accept a bad result
+			// the probability decreases as temperature goes down
+			} else if (pow(M_E, deltaFit * 0.5 / currentTemp) > (rand() / double(RAND_MAX))) {
+				newCoefficient = tempCo;
+				newFitness = tempFit;
+			}
+		}	
+		
+
+		// store the result into myTask and push it to the result queue
+		myTask.coeff = newCoefficient;
+		myTask.fitness = newFitness;
+		self->resultQueue->push(myTask);
+	}
+	
+	pthread_exit(nullptr);
+}
+
 void* NdegreePolynomialCalculator::threadWork(void* arg) {
-	NdegreePolynomialCalculator* self = (NdegreePolynomialCalculator*) arg;
+	arg_t* argument = (arg_t*) arg;
+
+	NdegreePolynomialCalculator* self = argument->self;
+
+	std::default_random_engine generator;
+
+	generator.seed(argument->threadNum * std::chrono::system_clock::now().time_since_epoch().count());
 
 	// timeout try
-	const float timeout = 2;
+	const float timeoutTry = 2;
 
 	// start and end time
 	clock_t start, end;
 
 	// the variance used for mutating
-	std::uniform_real_distribution<float> mutateDis(-2.0f, 2.0f);
+	std::uniform_real_distribution<float> mutateDis(-1.0f * argument->threadNum, 1.0f * argument->threadNum);
 
 	// if the optimal solution is not yet found
 	while(!self->hasFound) {
@@ -139,9 +229,11 @@ void* NdegreePolynomialCalculator::threadWork(void* arg) {
 		// we keep mutating until we find a better one
 		while (!self->hasFound) {
 			auto tempCo = myTask.coeff;
-			for (auto& co : tempCo) {
-				co += mutateDis(self->generator);
+			
+			for (int i = 0; i < tempCo.size(); i++) {
+				tempCo[i] += mutateDis(generator) * (i + 1) / (tempCo.size());
 			}
+
 			float tempFit = self->fitnessFunc(tempCo);
 			if (tempFit < myTask.fitness) {
 				newCoefficient = tempCo;
@@ -150,7 +242,15 @@ void* NdegreePolynomialCalculator::threadWork(void* arg) {
 			}
 
 			end = clock();
-			if (((end - start) / double(CLOCKS_PER_SEC)) > 3.0f) {
+
+			// if this thread is stuck at some point
+			// where it can't find a better one, just break
+			float timeElapsed = ((end - start) / double(CLOCKS_PER_SEC));
+
+			if (timeElapsed > timeoutTry) {
+				// after sending the non optimal result back
+				// it will have a chance of getting a better result as 
+				// the new input might be better
 				break;
 			}
 		}
@@ -168,6 +268,7 @@ bool NdegreePolynomialCalculator::genRandomPoints() {
 	
 	std::uniform_real_distribution<float> pointRangeDis(-50.0f, 50.0f);
 
+	// n + 1 points for n degree polynomial
 	for (int i = 1; i <= degree + 1; i++) {
 		float new_x = pointRangeDis(generator);
 		float new_y = pointRangeDis(generator);
@@ -193,7 +294,12 @@ float NdegreePolynomialCalculator::fitnessFunc(const std::vector<float>& coeff) 
 			X *= x;
 		}
 
+		// the fitness is calculated the sum of
+		// all sample point's y (expected value) minus calculated y value
+		// over the y value 
 		float ratio = (y - result) / y;
+		// ratio = 0 if y = result
+		// make sure it is positive
 		fitness += (ratio < 0 ? -ratio : ratio);
 	}
 
