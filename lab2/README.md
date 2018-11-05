@@ -4,9 +4,9 @@ usage:
 
 ```
 ./program -d <degree>  
-				 -n <numOfThreads>  
-				 -f <fitness>  
-				 -a <useAnnealing>  
+		  -n <numOfThreads>  
+		  -f <fitness>  
+	      -a <useAnnealing>  
 ```
 
 type **make clean** to clean all the generated files  
