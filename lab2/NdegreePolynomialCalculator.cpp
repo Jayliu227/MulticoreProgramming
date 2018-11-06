@@ -74,7 +74,7 @@ bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff, boo
 				break;
 			}
 
-			std::cout << "New fitness: " << bestResult.fitness << "!" << std::endl;
+			//std::cout << "New fitness: " << bestResult.fitness << "!" << std::endl;
 		}	
 
 		// else we simply push the old job to the queue
