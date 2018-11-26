@@ -5,13 +5,14 @@
 #include <pthread.h>
 #include <time.h>
 
-#define _USE_MATH_DEFINES
-#include <cmath>
-
 #include "NdegreePolynomialCalculator.h"
 
-bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff){
+using namespace std;
+using namespace std::chrono;
+
+bool NdegreePolynomialCalculator::calculate(vector<float>& resultCoeff){
 	startTime = clock();
+	high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
 	// we need to generate n + 1 random points
 	genRandomPoints();
@@ -20,9 +21,9 @@ bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff){
 	}
 
 	// we also need to give some initial values to coefficients
-	std::uniform_real_distribution<float> coeffDis(-3.0f, 3.0f);
+	uniform_real_distribution<float> coeffDis(-3.0f, 3.0f);
 	// initial coefficients, randomly generated
-	std::vector<float> coefficients;
+	vector<float> coefficients;
 	for (int i = 1; i <= degree + 1; i++) {
 		float new_co = coeffDis(generator);
 		coefficients.push_back(new_co);
@@ -95,52 +96,55 @@ bool NdegreePolynomialCalculator::calculate(std::vector<float>& resultCoeff){
 		this->jobQueue->push(meaninglessTask);
 	}
 
-	std::vector<size_t> iterationsByThreads;
+	vector<size_t> iterationsByThreads;
 
 	for (int i = 0; i < numOfThreads; i++) {
 		pthread_join(threads[i], nullptr);	
 		iterationsByThreads.push_back(arguments[i].numOfIterations);
 	}
 
-	std::sort(iterationsByThreads.begin(), iterationsByThreads.end());
+	sort(iterationsByThreads.begin(), iterationsByThreads.end());
 
 	resultCoeff = bestResult.coeff;
 
 	completeTime = clock();
+	high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
 	// print out results to the console
-	std::cout << "Print Results:" << std::endl;
-	std::cout << "====================================" << std::endl;
+	cout << "Print Results:" << endl;
+	cout << "====================================" << endl;
 
-	std::cout << "With " << numOfThreads << " Threads, Time Taken: " << ((completeTime - startTime) / double(CLOCKS_PER_SEC)) << "s." << std::endl;
-	std::cout << std::endl;
+	cout << "With " << numOfThreads << " Threads" << endl; 
+	cout << "CPU Clock Time Taken: " << ((completeTime - startTime) / double(CLOCKS_PER_SEC)) << "s." << endl;
+	cout << "Wall Clock Time Taken: " << duration_cast<microseconds>( t2 - t1 ).count() / 1000000.0 << "s." << endl;
+	cout << endl;
 
-	std::cout << "Number of best coefficients returned by threads is " << numOfBestGuesses << "." << std::endl;
-	std::cout << "Number of guesses performed by all threads is " << std::accumulate(iterationsByThreads.begin(), iterationsByThreads.end(), 0) << "." << std::endl;
-	std::cout << "Max number of iterations is " << *(iterationsByThreads.end() - 1) << "." << std::endl;
-	std::cout << "Min number of iterations is " << *iterationsByThreads.begin() << "." << std::endl;
-	std::cout << "Mean of iterations is " << (std::accumulate(iterationsByThreads.begin(), iterationsByThreads.end(), 0) / numOfThreads) << "." << std::endl;
-	std::cout << "Median of iterations is " << iterationsByThreads[numOfThreads / 2] << "." << std::endl;
-	std::cout << std::endl;
+	cout << "Number of best coefficients returned by threads is " << numOfBestGuesses << "." << endl;
+	cout << "Number of guesses performed by all threads is " << std::accumulate(iterationsByThreads.begin(), iterationsByThreads.end(), 0) << "." << endl;
+	cout << "Max number of iterations is " << *(iterationsByThreads.end() - 1) << "." << endl;
+	cout << "Min number of iterations is " << *iterationsByThreads.begin() << "." << endl;
+	cout << "Mean of iterations is " << (std::accumulate(iterationsByThreads.begin(), iterationsByThreads.end(), 0) / numOfThreads) << "." << endl;
+	cout << "Median of iterations is " << iterationsByThreads[numOfThreads / 2] << "." << endl;
+	cout << endl;
 
-	std::cout << "Final Fitness: " << bestResult.fitness << "."<< std::endl;
-	std::cout << "Point Samples: " << std::endl;
+	cout << "Final Fitness: " << bestResult.fitness << "."<< endl;
+	cout << "Point Samples: " << endl;
 	for (auto& p : this->points) {
 		float x = p.first;
 		float y = p.second;
-		std::cout << "(" << x << "," << y << ")" << std::endl;
+		cout << "(" << x << "," << y << ")" << endl;
 	}
 
-	std::cout << "Coefficients: ";
+	cout << "Coefficients: ";
 	for (auto& i : bestResult.coeff) {
-		std::cout << i << " ";
+		cout << i << " ";
 	}
-	std::cout << std::endl;
+	cout << endl;
 
 	return true;
 }
 
-bool NdegreePolynomialCalculator::calculate(std::vector<float>& coeff, std::vector< std::pair<float, float> >& points) {
+bool NdegreePolynomialCalculator::calculate(vector<float>& coeff, vector< pair<float, float> >& points) {
 	bool ok = calculate(coeff);
 	points = this->points;
 	return ok;
@@ -151,9 +155,9 @@ void* NdegreePolynomialCalculator::threadWork(void* arg) {
 
 	NdegreePolynomialCalculator* self = argument->self;
 
-	std::default_random_engine generator;
+	default_random_engine generator;
 
-	generator.seed(argument->threadNum * std::chrono::system_clock::now().time_since_epoch().count());
+	generator.seed(argument->threadNum * system_clock::now().time_since_epoch().count());
 
 	// timeout try
 	const float timeoutTry = 2;
