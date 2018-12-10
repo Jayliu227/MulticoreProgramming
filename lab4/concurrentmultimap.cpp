@@ -87,7 +87,8 @@ bool ConcurrentMultimap<K, V>::truncate(const size_t n) {
 		return true;
 	}
 	
-	auto start = _multimap.begin() + n;
+	auto start = _multimap.begin();
+	for (int i = 0; i < n; i++) start++;
 	auto end = _multimap.end();
 	_multimap.erase(start, end);
 
