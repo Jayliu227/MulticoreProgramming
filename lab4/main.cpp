@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <cmath>
 #include <cassert>
+#include <unistd.h>
 
 #include "maze.h"
 #include "concurrentmultimap.cpp"
@@ -13,11 +14,11 @@
 using namespace std;
 
 /* global state for the program */
-const size_t num_of_threads = 4;                   /* has to be greater than two */
-const size_t threshold = 100000;
-const size_t rows = 15;
-const size_t columns = 15;
-const size_t genome_length = 30;
+size_t num_of_threads = 4;                   /* has to be greater than two */
+size_t threshold = 100000;
+size_t rows = 15;
+size_t columns = 15;
+size_t genome_length = 30;
 atomic<uint64_t> futility_counter(0);
 
 bool has_terminated = false;
@@ -165,10 +166,12 @@ void* mutator(void* arg) {
 
 		first_row = population[0];
 		float new_best_fitness = first_row.first;
+		/* we check if the best fitness has changed */
 		if (new_best_fitness < best_fitness_so_far) {
 			futility_counter = 0;
 		} else {
 			futility_counter++;
+			/* if we have not made any progress for <threshold> that many iteration, terminate */
 			if (futility_counter > threshold) {
 				has_terminated = true;
 			}
@@ -177,9 +180,62 @@ void* mutator(void* arg) {
 	pthread_exit(nullptr);
 }
 
-int main() {
+void input_handle(int argc, char* argv[]) {
+	int token;
+	while((token = getopt(argc, argv, "n:t:r:c:l:")) != -1) {
+		switch(token) {
+			case 'n':
+				num_of_threads = atoi(optarg);
+				break;
+			case 't':
+				threshold = atoi(optarg);
+				break;
+			case 'r':
+				rows = atoi(optarg);
+				break;
+			case 'c':
+				columns = atoi(optarg);
+				break;
+			case 'l':
+				genome_length = atoi(optarg);
+				break;
+			case '?':
+				if (optopt == 'n') {
+					std::cout << "flag -n requires an integer to specify number of threads (greater than 1)." << std::endl;
+				} else if (optopt == 't') {
+					std::cout << "flag -t requires an integer to specify threshold (greater than 0)." << std::endl;
+				} else if (optopt == 'r') {
+					std::cout << "flag -r requires an integer to specify the rows of the maze (greater than 0)." << std::endl;
+				} else if (optopt == 'c') {
+					std::cout << "flag -c requires an integer to specify the columns of the maze (greater than 0)." << std::endl;					
+				} else if (optopt == 'l') {
+					std::cout << "flag -l requires an integer to specify the length of the genome (greater than 0)." << std::endl;					
+				} else if (isprint(optopt)) {
+					std::cout << "unknown command" << std::endl;
+				} else {
+					std::cout << "unknown character." << std::endl;
+				}
+				abort();
+			default:
+				abort();
+		}
+	}
+
+	/* sanity check */
+	if (num_of_threads < 2 ||
+		threshold < 1 ||
+		rows < 1 ||
+		columns < 1 ||
+		genome_length < 1
+	) abort();
+}
+
+int main(int argc, char* argv[]) {
 	/* set random seed */
 	srand(time(NULL));
+
+	/* handle input */
+	input_handle(argc, argv);
 
 	/* maze object */
 	Maze maze(rows, columns);
@@ -205,6 +261,7 @@ int main() {
 	for (int i = 0; i < num_of_mixers; i++) { pthread_join(mixers[i], nullptr); }
 	for (int i = 0; i < num_of_mutators; i++) { pthread_join(mutators[i], nullptr); }
 
+	/* print the result */
 	print_maze(maze);
 	auto best_result = population[0];
 	float fitness = best_result.first;
