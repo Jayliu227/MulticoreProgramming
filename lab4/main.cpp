@@ -19,12 +19,12 @@ size_t threshold = 100000;
 size_t rows = 15;
 size_t columns = 15;
 size_t genome_length = 30;
-atomic<uint64_t> futility_counter(0);
+atomic<size_t> futility_counter(0);
 
 bool has_terminated = false;
 
 /* thread-safe containers shared by all threads */
-ConcurrentMultimap<float, string> population;
+ConcurrentMultimap<int, string> population;
 ConcurrentQueue<string> offsprings;
 
 /* init a new random genome */
@@ -42,7 +42,7 @@ string init_genome(size_t length, bool all_zeros) {
 	return result;
 }
 
-float fitness_metrics(const string& genome, Maze& maze) {
+int fitness_metrics(const string& genome, Maze& maze) {
 	assert(genome.size() == genome_length);
 
 	int run_into_wall_counter = 0;
@@ -84,13 +84,13 @@ float fitness_metrics(const string& genome, Maze& maze) {
 		}
 	}
 
-	/* taxicab distance */
 	int end_x = maze.getFinish().row;
 	int end_y = maze.getFinish().col;
-
-	float dist = sqrt((cur_x - end_x) * (cur_x - end_x) + (cur_y - end_y) * (cur_y - end_y));
-
-	return 2.0 * dist + (float) run_into_wall_counter;
+	
+	/* taxicab distance */
+	int dist = abs(end_x - cur_x) + abs(end_y - cur_y);
+	
+	return 2 * dist + run_into_wall_counter;
 }
 
 void print_maze(Maze& maze) {
@@ -147,11 +147,15 @@ void* mutator(void* arg) {
 	while (!has_terminated) {
 		/* get the first place in population and record the fitness */
 		auto first_row = population[0];
-		float best_fitness_so_far = first_row.first;
+		int best_fitness_so_far = first_row.first;
 
 		/* fetch a offspring */
 		string offspring_genome;
-		offsprings.listen(offspring_genome);
+		
+		//printf("start\n");
+		if (!offsprings.listen(offspring_genome)) {
+			break;
+		}
 
 		/* modifying one random element of the offspring with probability 40 */
 		if (rand() % 100 <= 40) {
@@ -160,20 +164,22 @@ void* mutator(void* arg) {
 		}
 
 		/* compute the new fitness and insert it into the population, truncate the population */
-		float offspring_fitness = fitness_metrics(offspring_genome, maze);
+		int offspring_fitness = fitness_metrics(offspring_genome, maze);
 		population.insert(offspring_fitness, offspring_genome);
 		population.truncate(4 * num_of_threads);
 
 		first_row = population[0];
-		float new_best_fitness = first_row.first;
+		int new_best_fitness = first_row.first;
+
 		/* we check if the best fitness has changed */
 		if (new_best_fitness < best_fitness_so_far) {
 			futility_counter = 0;
 		} else {
 			futility_counter++;
 			/* if we have not made any progress for <threshold> that many iteration, terminate */
-			if (futility_counter > threshold) {
+			if (futility_counter.load() >= threshold) {
 				has_terminated = true;
+				offsprings.finalize();
 			}
 		}
 	} 
@@ -230,7 +236,36 @@ void input_handle(int argc, char* argv[]) {
 	) abort();
 }
 
+void print_result(Maze maze) {
+	print_maze(maze);
+	auto best_result = population[0];
+	int fitness = best_result.first;
+	string genome = best_result.second;
+
+	printf("Number of threads: %zu\nThreshold: %zu\nGenome Length: %zu\n", num_of_threads, threshold, genome_length);
+	printf("Best result:\n  fitness is %d\n  genome is %s\n", fitness, genome.c_str());
+}
+
+/* no need to delete later as it points to the data stored on the stack */
+Maze* maze_ptr;           				
+
+/* interrupt handler method */
+void interrupt_handler(int code) {
+	has_terminated = true;
+
+	printf("force quit the program:\n");
+	if (maze_ptr != nullptr) {
+		print_result(*maze_ptr);
+	} else {
+		printf("program haven't yet created the maze...\n");
+	}
+
+	exit(code);
+}
+
 int main(int argc, char* argv[]) {
+	signal(SIGINT, interrupt_handler);
+
 	/* set random seed */
 	srand(time(NULL));
 
@@ -239,6 +274,7 @@ int main(int argc, char* argv[]) {
 
 	/* maze object */
 	Maze maze(rows, columns);
+	maze_ptr = &maze;
 
 	/* generate initial 4 * num_of_threads genomes */
 	for (int i = 0; i < 4 * num_of_threads; i++) {
@@ -247,8 +283,11 @@ int main(int argc, char* argv[]) {
 		population.insert(fitness, new_genome);
 	}	
 
-	size_t num_of_mixers = num_of_threads / 2;
-	size_t num_of_mutators = num_of_threads - num_of_mixers;
+	int num_of_mixers = num_of_threads / 4;
+	int num_of_mutators = num_of_threads - num_of_mixers;
+
+	/* print out number of mutators and mixers */
+	printf("number of mutators: %d number of mixers: %d\n", num_of_mutators, num_of_mixers);
 
 	pthread_t mixers[num_of_mixers];
 	pthread_t mutators[num_of_mutators];
@@ -262,13 +301,7 @@ int main(int argc, char* argv[]) {
 	for (int i = 0; i < num_of_mutators; i++) { pthread_join(mutators[i], nullptr); }
 
 	/* print the result */
-	print_maze(maze);
-	auto best_result = population[0];
-	float fitness = best_result.first;
-	string genome = best_result.second;
-
-	printf("Number of threads: %zu\nThreshold: %zu\nGenome Length: %zu\n", num_of_threads, threshold, genome_length);
-	printf("Best result:\n  fitness is %f\n  genome is %s", fitness, genome.c_str());
+	print_result(maze);
 
 	return 0;
 }

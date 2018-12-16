@@ -31,6 +31,14 @@ public:
 	*/
 	bool listen(T& element);
 
+	/* 
+		To wake up all waiting threads. 
+		Called only when we're down with the instance and no longer wants to use it 
+	*/
+	void finalize();
+
+	int32_t count();
+
 private:
 
 	// underlying store DS which is a std::vector
@@ -45,6 +53,9 @@ private:
 	// used with _cond variable to signify listeners
 	bool _is_empty;
 
+	// is finalizing
+	bool _is_finalized;
+
 	pthread_mutex_t _lock;
 
 	pthread_cond_t _cond;
@@ -56,6 +67,8 @@ ConcurrentQueue<T>::ConcurrentQueue() {
 	_head = _tail = -1;
 	// and the queue is empty
 	_is_empty = true;
+
+	_is_finalized = false;
 
 	pthread_mutex_init(&_lock, nullptr);
 	pthread_cond_init(&_cond, nullptr);
@@ -69,6 +82,7 @@ ConcurrentQueue<T>::~ConcurrentQueue() {
 
 template<typename T>
 bool ConcurrentQueue<T>::push(const T element) {
+	if (_is_finalized) return false;
 
 	// push simply push_back the element to the end of the vector
 	pthread_mutex_lock(&_lock);
@@ -84,7 +98,8 @@ bool ConcurrentQueue<T>::push(const T element) {
 
 template<typename T>
 bool ConcurrentQueue<T>::pop(T& element) {
-	
+	if (_is_finalized) return false;
+
 	pthread_mutex_lock(&_lock);
 	// if the queue is empty, simply return false
 	if (_is_empty) {
@@ -104,13 +119,21 @@ bool ConcurrentQueue<T>::pop(T& element) {
 
 template<typename T>
 bool ConcurrentQueue<T>::listen(T& element) {
+	if (_is_finalized) return false;
 
 	pthread_mutex_lock(&_lock);
 	// we use while loop to check if it is not empty
 	while(_is_empty) {
 		pthread_cond_wait(&_cond, &_lock);
+		if (_is_finalized) {
+			break;
+		}
 	}
 	// if is not empty, we increment _head and pop it out
+	if (_is_finalized) {
+		pthread_mutex_unlock(&_lock);
+		return false;
+	}
 	element = _data[++_head];
 	if (_head == _tail) {
 		_is_empty = true;
@@ -118,4 +141,25 @@ bool ConcurrentQueue<T>::listen(T& element) {
 	pthread_mutex_unlock(&_lock);
 	
 	return true;
+}
+
+template<typename T>
+void ConcurrentQueue<T>::finalize() {
+
+	pthread_mutex_lock(&_lock);
+	_is_finalized = true;
+	_is_empty = false;
+	pthread_cond_broadcast(&_cond);
+	pthread_mutex_unlock(&_lock);	
+}
+
+template<typename T>
+int32_t ConcurrentQueue<T>::count() {
+	if (_is_finalized) return 0;
+
+	pthread_mutex_lock(&_lock);
+	int32_t size = _tail - _head;
+	pthread_mutex_unlock(&_lock);
+	
+	return size;
 }
